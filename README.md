@@ -102,8 +102,15 @@ function uploadExcel() {
 ### 後端開發
 
 ```bash
+# 安裝 uv（如果尚未安裝）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # 從專案根目錄執行
-pip install fastapi uvicorn sqlmodel psycopg2-binary pandas openpyxl python-multipart jinja2 anyio
+cd backend
+uv pip install -r pyproject.toml
+
+# 啟動開發伺服器（回到專案根目錄）
+cd ..
 uvicorn backend.main:app --reload
 ```
 

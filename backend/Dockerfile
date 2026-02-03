@@ -1,5 +1,6 @@
 # Backend Dockerfile
 # 臺北市立復興高級中學 學分補考查詢系統 - 後端服務
+# 使用 uv 進行套件管理
 
 FROM python:3.13-slim
 
@@ -9,28 +10,30 @@ WORKDIR /app
 # 設定環境變數
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    UV_SYSTEM_PYTHON=1
 
 # 安裝系統依賴
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 複製後端程式碼
-COPY backend /app/backend
+# 安裝 uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# 複製 pyproject.toml（用於安裝依賴）
+COPY backend/pyproject.toml /app/backend/
 
 # 安裝 Python 依賴
-RUN pip install --no-cache-dir \
-    fastapi>=0.109.0 \
-    "uvicorn[standard]>=0.27.0" \
-    sqlmodel>=0.0.14 \
-    psycopg2-binary>=2.9.9 \
-    pandas>=2.1.0 \
-    openpyxl>=3.1.0 \
-    python-multipart>=0.0.6 \
-    jinja2>=3.1.0 \
-    anyio>=4.0.0
+WORKDIR /app/backend
+RUN uv pip install -r pyproject.toml
+
+# 複製後端程式碼
+WORKDIR /app
+COPY backend /app/backend
 
 # 暴露端口
 EXPOSE 8000
