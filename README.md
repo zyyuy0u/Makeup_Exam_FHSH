@@ -1,30 +1,47 @@
 # 臺北市立復興高級中學 學分補考查詢系統
 
-## 🚀 快速開始
+學生可透過學號查詢補考科目、日期、時間、地點。管理員透過 Google Sheets 上傳補考名單。
 
-### 使用 Docker Compose (推薦)
+## 技術架構
+
+| 層級 | 技術 |
+|------|------|
+| 前端 | React 19 + Vite |
+| 後端 | FastAPI + SQLModel |
+| 資料庫 | PostgreSQL 15 |
+| 套件管理 | uv (Python) / npm (Node.js) |
+| 容器化 | Docker Compose |
+| 反向代理 | Nginx |
+
+## 快速開始
 
 ```bash
-# 1. 複製環境變數檔案
-cp .env.example .env
-
-# 2. 編輯 .env 設定 Secret Token
-# 產生 token: python -c "import secrets; print(secrets.token_hex(32))"
-vim .env
-
-# 3. 啟動服務
+# 啟動服務
 docker compose up -d --build
 
-# 4. 查看服務狀態
+# 查看服務狀態
 docker compose ps
 
-# 5. 查看 Secret Token（若未手動設定）
+# 查看 Secret Token（若未手動設定）
 docker compose logs backend | grep "ADMIN_SECRET_TOKEN"
 ```
 
-服務將在以下位置啟動：
-- 前端 (學生查詢): http://localhost
-- 後端 API: http://localhost:8000
+服務位置：
+- 前端：http://localhost
+- 後端 API：http://localhost:8000
+
+### 設定永久 Token（可選）
+
+```bash
+# 1. 產生 Token
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# 2. 建立 .env 檔案
+echo "ADMIN_SECRET_TOKEN=你產生的Token" > .env
+
+# 3. 重啟服務
+docker compose down && docker compose up -d --build
+```
 
 ### 停止服務
 
@@ -32,89 +49,159 @@ docker compose logs backend | grep "ADMIN_SECRET_TOKEN"
 docker compose down
 ```
 
-## 📋 功能說明
+## 功能說明
 
 ### 學生端
 - 輸入學號查詢補考科目
 - 顯示科目、日期、時間、地點
+- 學生姓名自動遮罩保護隱私（王○明）
 - 響應式設計，支援手機瀏覽
+- 深色/淺色模式自動切換
 
-### 管理端 (API)
-- 使用 Secret Token 進行身份驗證
+### 管理端
 - 透過 Google Apps Script 上傳 Excel 補考名單
-- 全量覆蓋更新 (每次上傳會清除舊資料)
+- 使用 Secret Token 進行 API 驗證
+- 全量覆蓋更新（每次上傳清除舊資料）
 
-## 🔐 安全機制
+## API 文件
 
-本系統移除傳統的網頁登入介面，改用 Secret Token 機制：
+### 學生查詢
 
-1. **無登入頁面**: 消除暴力破解攻擊面
-2. **Secret Token**: 使用 256 位元 (32 bytes) 隨機金鑰
-3. **Header 傳輸**: Token 透過 `X-Admin-Token` HTTP Header 傳送
-4. **Timing Attack 防護**: 使用 `secrets.compare_digest` 進行比對
+```
+GET /api/exams/{student_id}
+```
 
-### Google Apps Script 呼叫範例
-
-```javascript
-function uploadExcel() {
-  const url = 'https://your-domain.com/admin/upload';
-  const token = 'your_secret_token_here';
-
-  // 取得 Google Drive 中的 Excel 檔案
-  const file = DriveApp.getFileById('your_file_id');
-  const blob = file.getBlob();
-
-  const options = {
-    method: 'post',
-    headers: {
-      'X-Admin-Token': token
-    },
-    payload: {
-      file: blob
+回應範例：
+```json
+{
+  "student_id": "112001",
+  "student_name": "王○明",
+  "exams": [
+    {
+      "subject": "數學",
+      "exam_date": "2月6日",
+      "exam_time": "08:00-08:50",
+      "location": "篤行樓209教室"
     }
-  };
-
-  const response = UrlFetchApp.fetch(url, options);
-  Logger.log(response.getContentText());
+  ]
 }
 ```
 
-## 📁 專案結構
+### 管理員上傳
 
 ```
-├── backend/           # FastAPI 後端
-│   ├── main.py       # 主應用程式
-│   ├── models.py     # SQLModel 資料模型
-│   ├── database.py   # 資料庫設定
-│   ├── routers/      # API 路由
-│   ├── services/     # 服務層 (Excel 解析)
-│   ├── utils/        # 工具函式 (async, webpage)
-│   └── Dockerfile
-├── frontend/          # React 前端
+POST /admin/upload
+Header: X-Admin-Token: <your_token>
+Body: multipart/form-data (file: Excel檔案)
+```
+
+### 健康檢查
+
+```
+GET /health
+```
+
+## 安全機制
+
+1. **無登入頁面**：消除暴力破解攻擊面
+2. **Secret Token**：256 位元隨機金鑰
+3. **Header 傳輸**：Token 透過 `X-Admin-Token` 傳送
+4. **Timing Attack 防護**：使用 `secrets.compare_digest` 比對
+
+## Google Apps Script 設定
+
+1. 開啟你的 Google Sheets 補考名單
+2. 點選「擴充功能」→「Apps Script」
+3. 貼上 `google-apps-script.js` 的內容
+4. 修改 `CONFIG` 設定：
+   ```javascript
+   const CONFIG = {
+     API_URL: "http://你的伺服器IP/admin/upload",
+     SECRET_TOKEN: "你的64字元Token"
+   };
+   ```
+5. 儲存後重新整理 Google Sheets
+6. 使用選單「📚 補考系統」→「🚀 上傳到資料庫」
+
+## Excel 檔案格式
+
+工作表名稱：**應到考名單 (班級座號序)**
+
+| 欄位 | 必要 | 說明 |
+|------|------|------|
+| 學號 | ✓ | 學生學號 |
+| 補考科目 | ✓ | 科目名稱 |
+| 補考日期 | ✓ | 如「2月6日」 |
+| 補考時間 | ✓ | 如「08:00-08:50」 |
+| 補考教室 | ✓ | 如「篤行樓209教室」 |
+| 姓名1 或 姓名 | | 學生姓名（會自動遮罩） |
+| 班級 | | 班級名稱 |
+
+## 專案結構
+
+```
+├── backend/
+│   ├── main.py              # FastAPI 應用程式進入點
+│   ├── models.py            # SQLModel 資料模型
+│   ├── database.py          # 資料庫連線設定
+│   ├── pyproject.toml       # Python 依賴（uv 格式）
+│   ├── Dockerfile
+│   ├── routers/
+│   │   ├── api.py           # 學生查詢 API
+│   │   └── admin.py         # 管理員上傳 API
+│   ├── services/
+│   │   └── parser.py        # Excel 解析服務
+│   ├── utils/
+│   │   ├── async_utils.py   # 非同步工具
+│   │   ├── webpage.py       # 錯誤頁面渲染
+│   │   └── upload_authenticate.py  # Token 驗證
+│   └── templates/
+│       └── error.jinja2     # 錯誤頁面模板
+├── frontend/
 │   ├── src/
-│   ├── nginx.conf
-│   └── Dockerfile
-└── docker-compose.yml
+│   │   ├── App.jsx          # React 主元件
+│   │   └── index.css        # 樣式（含深色模式）
+│   ├── nginx.conf           # Nginx 反向代理設定
+│   ├── Dockerfile
+│   └── package.json
+├── docker-compose.yml       # 服務編排
+└── google-apps-script.js    # Google Sheets 自動上傳腳本
 ```
 
-## 🔧 開發環境
+## 資料庫結構
 
-### 後端開發
+**資料表：makeup_exams**
+
+| 欄位 | 類型 | 來源 |
+|------|------|------|
+| id | Integer (PK) | 自動產生 |
+| student_id | String(20) | Excel：學號 |
+| student_name | String(50) | Excel：姓名1 或 姓名 |
+| class_name | String(20) | Excel：班級 |
+| subject | String(50) | Excel：補考科目 |
+| exam_date | String(20) | Excel：補考日期 |
+| exam_time | String(50) | Excel：補考時間 |
+| location | String(50) | Excel：補考教室 |
+| created_at | DateTime | 自動產生 |
+
+## 開發環境
+
+### 後端
 
 ```bash
-# 安裝 uv（如果尚未安裝）
+# 安裝 uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 從專案根目錄執行
+# 安裝依賴
 cd backend
 uv pip install -r pyproject.toml
 
-# 啟動開發伺服器（回到專案根目錄）
+# 啟動開發伺服器
 cd ..
 uvicorn backend.main:app --reload
 ```
 
-### 前端開發
+### 前端
 
 ```bash
 cd frontend
@@ -122,26 +209,15 @@ npm install
 npm run dev
 ```
 
-## 📝 Excel 檔案格式
+## 配色方案
 
-系統讀取工作表「**應到考名單 (班級座號序)**」，欄位需求如下：
-
-**必要欄位：**
-- 學號
-- 補考科目
-- 補考日期
-- 補考時間
-- 補考教室
-
-**選填欄位：**
-- 姓名1（或 姓名）
-- 班級
-
-## 🎨 配色方案
-
-- 主色調: #00A99D (活潑藍綠)
-- 強調色: #FF6F61 (珊瑚橘紅)
+- 主色調：#00A99D（活潑藍綠）
+- 強調色：#FF6F61（珊瑚橘紅）
 - 支援深色模式自動切換
+
+## 授權
+
+本專案為臺北市立復興高級中學內部使用。
 
 ## LLM Exposure
 
@@ -401,5 +477,5 @@ For each issue, provide:
 ```
 
 
-### LLM Exposure : 
+### LLM Exposure :
 `https://docs.google.com/document/d/1IKRIbrFQyxFAaFBiGm6GzmOVSJw6juq8UHtxVQjOmBw/edit?usp=sharing`
